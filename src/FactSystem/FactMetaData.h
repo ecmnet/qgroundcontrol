@@ -81,6 +81,11 @@ public:
     ValueType_t     type                    (void) const { return _type; }
     QString         rawUnits                (void) const { return _rawUnits; }
     QString         cookedUnits             (void) const { return _cookedUnits; }
+    bool            rebootRequired          (void) const { return _rebootRequired; }
+
+    /// Amount to increment value when used in controls such as spin button or slider with detents.
+    /// NaN for no increment available.
+    double          increment               (void) const { return _increment; }
 
     Translator      rawTranslator           (void) const { return _rawTranslator; }
     Translator      cookedTranslator        (void) const { return _cookedTranslator; }
@@ -102,6 +107,8 @@ public:
     void setName            (const QString& name)               { _name = name; }
     void setShortDescription(const QString& shortDescription)   { _shortDescription = shortDescription; }
     void setRawUnits        (const QString& rawUnits);
+    void setRebootRequired  (bool rebootRequired)               { _rebootRequired = rebootRequired; }
+    void setIncrement       (double increment)                  { _increment = increment; }
 
     void setTranslators(Translator rawTranslator, Translator cookedTranslator);
 
@@ -117,6 +124,9 @@ public:
     bool convertAndValidateCooked(const QVariant& cookedValue, bool convertOnly, QVariant& typedValue, QString& errorString);
 
     static const int defaultDecimalPlaces = 3;
+
+    static ValueType_t stringToType(const QString& typeString, bool& unknownType);
+    static size_t typeToSize(ValueType_t type);
 
 private:
     QVariant _minForType(void) const;
@@ -150,6 +160,8 @@ private:
     QString         _cookedUnits;
     Translator      _rawTranslator;
     Translator      _cookedTranslator;
+    bool            _rebootRequired;
+    double          _increment;
 
     struct BuiltInTranslation_s {
         const char* rawUnits;

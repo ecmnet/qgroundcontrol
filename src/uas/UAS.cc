@@ -41,8 +41,6 @@
 
 QGC_LOGGING_CATEGORY(UASLog, "UASLog")
 
-#define UAS_DEFAULT_BATTERY_WARNLEVEL 20
-
 /**
 * Gets the settings from the previous UAS (name, airframe, autopilot, battery specs)
 * by calling readSettings. This means the new UAS will have the same settings
@@ -63,17 +61,6 @@ UAS::UAS(MAVLinkProtocol* protocol, Vehicle* vehicle, FirmwarePluginManager * fi
     custom_mode(0),
     status(-1),
 
-    startVoltage(-1.0f),
-    tickVoltage(10.5f),
-    lastTickVoltageValue(13.0f),
-    tickLowpassVoltage(12.0f),
-    warnLevelPercent(UAS_DEFAULT_BATTERY_WARNLEVEL),
-    currentVoltage(12.6f),
-    lpVoltage(-1.0f),
-    currentCurrent(0.4f),
-    chargeLevel(-1),
-    lowBattAlarm(false),
-
     startTime(QGC::groundTimeMilliseconds()),
     onboardTimeOffset(0),
 
@@ -86,14 +73,12 @@ UAS::UAS(MAVLinkProtocol* protocol, Vehicle* vehicle, FirmwarePluginManager * fi
     manualYawAngle(0),
     manualThrust(0),
 
-    positionLock(false),
     isGlobalPositionKnown(false),
 
     latitude(0.0),
     longitude(0.0),
     altitudeAMSL(0.0),
     altitudeAMSLFT(0.0),
-    altitudeWGS84(0.0),
     altitudeRelative(0.0),
 
     satRawHDOP(1e10f),
@@ -185,12 +170,10 @@ UAS::UAS(MAVLinkProtocol* protocol, Vehicle* vehicle, FirmwarePluginManager * fi
     }
 
 #ifndef __mobile__
-    connect(mavlink, SIGNAL(messageReceived(LinkInterface*,mavlink_message_t)), &fileManager, SLOT(receiveMessage(LinkInterface*,mavlink_message_t)));
+    connect(_vehicle, &Vehicle::mavlinkMessageReceived, &fileManager, &FileManager::receiveMessage);
 #endif
 
     color = UASInterface::getNextColor();
-    connect(&statusTimeout, SIGNAL(timeout()), this, SLOT(updateState()));
-    statusTimeout.start(500);
 }
 
 /**
@@ -199,46 +182,6 @@ UAS::UAS(MAVLinkProtocol* protocol, Vehicle* vehicle, FirmwarePluginManager * fi
 int UAS::getUASID() const
 {
     return uasId;
-}
-
-/**
-* Update the heartbeat.
-*/
-void UAS::updateState()
-{
-    // Check if heartbeat timed out
-    quint64 heartbeatInterval = QGC::groundTimeUsecs() - lastHeartbeat;
-    if (!connectionLost && (heartbeatInterval > timeoutIntervalHeartbeat))
-    {
-        connectionLost = true;
-        receivedMode = false;
-        QString audiostring = QString("Link lost to system %1").arg(this->getUASID());
-        _say(audiostring.toLower(), GAudioOutput::AUDIO_SEVERITY_ALERT);
-    }
-
-    // Update connection loss time on each iteration
-    if (connectionLost && (heartbeatInterval > timeoutIntervalHeartbeat))
-    {
-        connectionLossTime = heartbeatInterval;
-        emit heartbeatTimeout(true, heartbeatInterval/1000);
-    }
-
-    // Connection gained
-    if (connectionLost && (heartbeatInterval < timeoutIntervalHeartbeat))
-    {
-        QString audiostring = QString("Link regained to system %1").arg(this->getUASID());
-        _say(audiostring.toLower(), GAudioOutput::AUDIO_SEVERITY_NOTICE);
-        connectionLost = false;
-        connectionLossTime = 0;
-        emit heartbeatTimeout(false, 0);
-    }
-
-    // Position lock is set by the MAVLink message handler
-    // if no position lock is available, indicate an error
-    if (positionLock)
-    {
-        positionLock = false;
-    }
 }
 
 void UAS::receiveMessage(mavlink_message_t message)
@@ -325,8 +268,6 @@ void UAS::receiveMessage(mavlink_message_t message)
             {
                 break;
             }
-            lastHeartbeat = QGC::groundTimeUsecs();
-            emit heartbeat(this);
             mavlink_heartbeat_t state;
             mavlink_msg_heartbeat_decode(&message, &state);
 
@@ -338,78 +279,18 @@ void UAS::receiveMessage(mavlink_message_t message)
             emit valueChanged(uasId, name.arg("custom_mode"), "bits", state.custom_mode, time);
             emit valueChanged(uasId, name.arg("system_status"), "-", state.system_status, time);
 
-            QString audiostring = QString("System %1").arg(uasId);
-            QString stateAudio = "";
-            QString modeAudio = "";
-            QString navModeAudio = "";
-            bool statechanged = false;
-            bool modechanged = false;
-
-            QString audiomodeText = _firmwarePluginManager->firmwarePluginForAutopilot((MAV_AUTOPILOT)state.autopilot, (MAV_TYPE)state.type)->flightMode(state.base_mode, state.custom_mode);
-
             if ((state.system_status != this->status) && state.system_status != MAV_STATE_UNINIT)
             {
-                statechanged = true;
                 this->status = state.system_status;
                 getStatusForCode((int)state.system_status, uasState, stateDescription);
                 emit statusChanged(this, uasState, stateDescription);
                 emit statusChanged(this->status);
-
-                // Adjust for better audio
-                if (uasState == QString("STANDBY")) uasState = QString("standing by");
-                if (uasState == QString("EMERGENCY")) uasState = QString("emergency condition");
-                if (uasState == QString("CRITICAL")) uasState = QString("critical condition");
-                if (uasState == QString("SHUTDOWN")) uasState = QString("shutting down");
-
-                stateAudio = uasState;
-            }
-
-            if (this->base_mode != state.base_mode || this->custom_mode != state.custom_mode)
-            {
-                modechanged = true;
-                this->base_mode = state.base_mode;
-                this->custom_mode = state.custom_mode;
-                modeAudio = " is now in " + audiomodeText + " flight mode";
             }
 
             // We got the mode
             receivedMode = true;
-
-            // AUDIO
-            if (modechanged && statechanged)
-            {
-                // Output both messages
-                audiostring += modeAudio + " and " + stateAudio;
-            }
-            else if (modechanged || statechanged)
-            {
-                // Output the one message
-                audiostring += modeAudio + stateAudio;
-            }
-
-            if (statechanged && ((int)state.system_status == (int)MAV_STATE_CRITICAL || state.system_status == (int)MAV_STATE_EMERGENCY))
-            {
-                _say(QString("Emergency for system %1").arg(this->getUASID()), GAudioOutput::AUDIO_SEVERITY_EMERGENCY);
-                QTimer::singleShot(3000, qgcApp()->toolbox()->audioOutput(), SLOT(startEmergency()));
-            }
-            else if (modechanged || statechanged)
-            {
-                _say(audiostring.toLower());
-            }
         }
 
-            break;
-
-        case MAVLINK_MSG_ID_BATTERY_STATUS:
-        {
-            if (multiComponentSourceDetected && wrongComponent)
-            {
-                break;
-            }
-            mavlink_battery_status_t bat_status;
-            mavlink_msg_battery_status_decode(&message, &bat_status);
-            emit batteryConsumedChanged(this, (double)bat_status.current_consumed);
-        }
             break;
 
         case MAVLINK_MSG_ID_SYS_STATUS:
@@ -435,60 +316,6 @@ void UAS::receiveMessage(mavlink_message_t message)
             // Process CPU load.
             emit loadChanged(this,state.load/10.0f);
             emit valueChanged(uasId, name.arg("load"), "%", state.load/10.0f, time);
-
-            if (state.voltage_battery > 0.0f && state.voltage_battery != UINT16_MAX) {
-                // Battery charge/time remaining/voltage calculations
-                currentVoltage = state.voltage_battery/1000.0f;
-                filterVoltage(currentVoltage);
-                tickLowpassVoltage = tickLowpassVoltage * 0.8f + 0.2f * currentVoltage;
-
-                // We don't want to tick above the threshold
-                if (tickLowpassVoltage > tickVoltage)
-                {
-                    lastTickVoltageValue = tickLowpassVoltage;
-                }
-
-                if ((startVoltage > 0.0f) && (tickLowpassVoltage < tickVoltage) && (fabs(lastTickVoltageValue - tickLowpassVoltage) > 0.1f)
-                        /* warn if lower than treshold */
-                        && (lpVoltage < tickVoltage)
-                        /* warn only if we have at least the voltage of an empty LiPo cell, else we're sampling something wrong */
-                        && (currentVoltage > 3.3f)
-                        /* warn only if current voltage is really still lower by a reasonable amount */
-                        && ((currentVoltage - 0.2f) < tickVoltage)
-                        /* warn only every 20 seconds */
-                        && (QGC::groundTimeUsecs() - lastVoltageWarning) > 20000000)
-                {
-                    _say(QString("Low battery system %1: %2 volts").arg(getUASID()).arg(lpVoltage, 0, 'f', 1, QChar(' ')));
-                    lastVoltageWarning = QGC::groundTimeUsecs();
-                    lastTickVoltageValue = tickLowpassVoltage;
-                }
-
-                if (startVoltage == -1.0f && currentVoltage > 0.1f) startVoltage = currentVoltage;
-                chargeLevel = state.battery_remaining;
-
-                emit batteryChanged(this, lpVoltage, currentCurrent, getChargeLevel(), 0);
-            }
-
-            emit valueChanged(uasId, name.arg("battery_remaining"), "%", getChargeLevel(), time);
-            emit valueChanged(uasId, name.arg("battery_voltage"), "V", currentVoltage, time);
-
-            // And if the battery current draw is measured, log that also.
-            if (state.current_battery != -1)
-            {
-                currentCurrent = ((double)state.current_battery)/100.0f;
-                emit valueChanged(uasId, name.arg("battery_current"), "A", currentCurrent, time);
-            }
-
-            // LOW BATTERY ALARM
-            if (chargeLevel >= 0 && (getChargeLevel() < warnLevelPercent))
-            {
-                // An audio alarm. Does not generate any signals.
-                startLowBattAlarm();
-            }
-            else
-            {
-                stopLowBattAlarm();
-            }
 
             // control_sensors_enabled:
             // relevant bits: 11: attitude stabilization, 12: yaw position, 13: z/altitude control, 14: x/y position control
@@ -617,7 +444,7 @@ void UAS::receiveMessage(mavlink_message_t message)
             if (!isnan(hud.airspeed))
                 setAirSpeed(hud.airspeed);
             speedZ = -hud.climb;
-            emit altitudeChanged(this, altitudeAMSL, altitudeWGS84, altitudeRelative, -speedZ, time);
+            emit altitudeChanged(this, altitudeAMSL, altitudeRelative, -speedZ, time);
             emit speedChanged(this, groundSpeed, airSpeed, time);
         }
             break;
@@ -637,8 +464,6 @@ void UAS::receiveMessage(mavlink_message_t message)
 
                 // Emit
                 emit velocityChanged_NED(this, speedX, speedY, speedZ, time);
-
-                positionLock = true;
             }
         }
             break;
@@ -661,7 +486,6 @@ void UAS::receiveMessage(mavlink_message_t message)
 
             setLatitude(pos.lat/(double)1E7);
             setLongitude(pos.lon/(double)1E7);
-            setAltitudeWGS84(pos.alt/1000.0);
             setAltitudeRelative(pos.relative_alt/1000.0);
 
             globalEstimatorActive = true;
@@ -670,15 +494,14 @@ void UAS::receiveMessage(mavlink_message_t message)
             speedY = pos.vy/100.0;
             speedZ = pos.vz/100.0;
 
-            emit globalPositionChanged(this, getLatitude(), getLongitude(), getAltitudeAMSL(), getAltitudeWGS84(), time);
-            emit altitudeChanged(this, altitudeAMSL, altitudeWGS84, altitudeRelative, -speedZ, time);
+            emit globalPositionChanged(this, getLatitude(), getLongitude(), getAltitudeAMSL(), time);
+            emit altitudeChanged(this, altitudeAMSL, altitudeRelative, -speedZ, time);
             // We had some frame mess here, global and local axes were mixed.
             emit velocityChanged_NED(this, speedX, speedY, speedZ, time);
 
             setGroundSpeed(qSqrt(speedX*speedX+speedY*speedY));
             emit speedChanged(this, groundSpeed, airSpeed, time);
 
-            positionLock = true;
             isGlobalPositionKnown = true;
         }
             break;
@@ -699,7 +522,6 @@ void UAS::receiveMessage(mavlink_message_t message)
 
             if (pos.fix_type > 2)
             {
-                positionLock = true;
                 isGlobalPositionKnown = true;
 
                 latitude_gps  = pos.lat/(double)1E7;
@@ -710,9 +532,8 @@ void UAS::receiveMessage(mavlink_message_t message)
                 if (!globalEstimatorActive) {
                     setLatitude(latitude_gps);
                     setLongitude(longitude_gps);
-                    setAltitudeWGS84(altitude_gps);
-                    emit globalPositionChanged(this, getLatitude(), getLongitude(), getAltitudeAMSL(), getAltitudeWGS84(), time);
-                    emit altitudeChanged(this, altitudeAMSL, altitudeWGS84, altitudeRelative, -speedZ, time);
+                    emit globalPositionChanged(this, getLatitude(), getLongitude(), getAltitudeAMSL(), time);
+                    emit altitudeChanged(this, altitudeAMSL, altitudeRelative, -speedZ, time);
 
                     float vel = pos.vel/100.0f;
                     // Smaller than threshold and not NaN
@@ -789,6 +610,7 @@ void UAS::receiveMessage(mavlink_message_t message)
         {
             mavlink_command_ack_t ack;
             mavlink_msg_command_ack_decode(&message, &ack);
+            emit commandAck(this, message.compid, ack.command, ack.result);
             switch (ack.result)
             {
             case MAV_RESULT_ACCEPTED:
@@ -1240,19 +1062,6 @@ quint64 UAS::getUnixTime(quint64 time)
 }
 
 /**
- * @param value battery voltage
- */
-float UAS::filterVoltage(float value)
-{
-    if (lpVoltage < 0.0f) {
-        lpVoltage = value;
-    }
-
-    lpVoltage = lpVoltage * 0.6f + value * 0.4f;
-    return lpVoltage;
-}
-
-/**
 * Get the status of the code and a description of the status.
 * Status can be unitialized, booting up, calibrating sensors, active
 * standby, cirtical, emergency, shutdown or unknown.
@@ -1417,6 +1226,10 @@ void UAS::processParamValueMsg(mavlink_message_t& msg, const QString& paramName,
             paramValue = QVariant(paramUnion.param_int8);
             break;
 
+        case MAV_PARAM_TYPE_UINT16:
+            paramValue = QVariant(paramUnion.param_uint16);
+            break;
+
         case MAV_PARAM_TYPE_INT16:
             paramValue = QVariant(paramUnion.param_int16);
             break;
@@ -1428,6 +1241,14 @@ void UAS::processParamValueMsg(mavlink_message_t& msg, const QString& paramName,
         case MAV_PARAM_TYPE_INT32:
             paramValue = QVariant(paramUnion.param_int32);
             break;
+
+        //-- Note: These are not handled above:
+        //
+        //   MAV_PARAM_TYPE_UINT64
+        //   MAV_PARAM_TYPE_INT64
+        //   MAV_PARAM_TYPE_REAL64
+        //
+        //   No space in message (the only storage allocation is a "float") and not present in mavlink_param_union_t
 
         default:
             qCritical() << "INVALID DATA TYPE USED AS PARAMETER VALUE: " << rawValue.param_type;
@@ -2126,31 +1947,6 @@ QMap<int, QString> UAS::getComponents()
     return components;
 }
 
-/**
- * @return charge level in percent - 0 - 100
- */
-float UAS::getChargeLevel()
-{
-    return chargeLevel;
-}
-
-void UAS::startLowBattAlarm()
-{
-    if (!lowBattAlarm)
-    {
-        _say(tr("System %1 has low battery").arg(getUASID()));
-        lowBattAlarm = true;
-    }
-}
-
-void UAS::stopLowBattAlarm()
-{
-    if (lowBattAlarm)
-    {
-        lowBattAlarm = false;
-    }
-}
-
 void UAS::sendMapRCToParam(QString param_id, float scale, float value0, quint8 param_rc_channel_index, float valueMin, float valueMax)
 {
     if (!_vehicle) {
@@ -2182,7 +1978,7 @@ void UAS::sendMapRCToParam(QString param_id, float scale, float value0, quint8 p
                                   valueMin,
                                   valueMax);
     _vehicle->sendMessage(message);
-    qDebug() << "Mavlink message sent";
+    //qDebug() << "Mavlink message sent";
 }
 
 void UAS::unsetRCToParameterMap()
@@ -2213,8 +2009,8 @@ void UAS::unsetRCToParameterMap()
 
 void UAS::_say(const QString& text, int severity)
 {
-    if (!qgcApp()->runningUnitTests())
-        qgcApp()->toolbox()->audioOutput()->say(text, severity);
+    Q_UNUSED(severity);
+    qgcApp()->toolbox()->audioOutput()->say(text);
 }
 
 void UAS::shutdownVehicle(void)

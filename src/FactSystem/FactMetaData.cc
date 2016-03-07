@@ -51,6 +51,8 @@ FactMetaData::FactMetaData(QObject* parent)
     , _minIsDefaultForType(true)
     , _rawTranslator(_defaultTranslator)
     , _cookedTranslator(_defaultTranslator)
+    , _rebootRequired(false)
+    , _increment(std::numeric_limits<double>::quiet_NaN())
 {
 
 }
@@ -68,6 +70,8 @@ FactMetaData::FactMetaData(ValueType_t type, QObject* parent)
     , _minIsDefaultForType(true)
     , _rawTranslator(_defaultTranslator)
     , _cookedTranslator(_defaultTranslator)
+    , _rebootRequired(false)
+    , _increment(std::numeric_limits<double>::quiet_NaN())
 {
 
 }
@@ -100,6 +104,8 @@ const FactMetaData& FactMetaData::operator=(const FactMetaData& other)
     _cookedUnits            = other._cookedUnits;
     _rawTranslator          = other._rawTranslator;
     _cookedTranslator       = other._cookedTranslator;
+    _rebootRequired         = other._rebootRequired;
+    _increment              = other._increment;
 
     return *this;
 }
@@ -394,4 +400,65 @@ void FactMetaData::setRawUnits(const QString& rawUnits)
     _cookedUnits = rawUnits;
 
     _setBuiltInTranslator();
+}
+
+FactMetaData::ValueType_t FactMetaData::stringToType(const QString& typeString, bool& unknownType)
+{
+    QStringList         knownTypeStrings;
+    QList<ValueType_t>  knownTypes;
+
+    unknownType = false;
+
+    knownTypeStrings << QStringLiteral("Uint8")
+                        << QStringLiteral("Int8")
+                        << QStringLiteral("Uint16")
+                        << QStringLiteral("Int16")
+                        << QStringLiteral("Uint32")
+                        << QStringLiteral("Int32")
+                        << QStringLiteral("Float")
+                        << QStringLiteral("Double");
+
+    knownTypes << valueTypeUint8
+                << valueTypeInt8
+                << valueTypeUint16
+                << valueTypeInt16
+                << valueTypeUint32
+                << valueTypeInt32
+                << valueTypeFloat
+                << valueTypeDouble;
+
+    for (int i=0; i<knownTypeStrings.count(); i++) {
+        if (knownTypeStrings[i].compare(typeString, Qt::CaseInsensitive) == 0) {
+            return knownTypes[i];
+        }
+    }
+
+    unknownType = true;
+
+    return valueTypeDouble;
+}
+
+size_t FactMetaData::typeToSize(ValueType_t type)
+{
+    switch (type) {
+        case valueTypeUint8:
+        case valueTypeInt8:
+            return 1;
+
+        case valueTypeUint16:
+        case valueTypeInt16:
+            return 2;
+
+        case valueTypeUint32:
+        case valueTypeInt32:
+        case valueTypeFloat:
+            return 4;
+
+        case valueTypeDouble:
+            return 8;
+
+        default:
+            qWarning() << "Unsupported fact value type" << type;
+            return 4;
+    }
 }

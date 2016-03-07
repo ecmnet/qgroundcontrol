@@ -45,8 +45,8 @@ Rectangle {
 
     readonly property real      _defaultTextHeight: ScreenTools.defaultFontPixelHeight
     readonly property real      _defaultTextWidth:  ScreenTools.defaultFontPixelWidth
-    readonly property real      _margin:            _defaultTextHeight / 2
-    readonly property real      _buttonWidth:       _defaultTextWidth * 18
+    readonly property real      _margin:            Math.round(_defaultTextHeight / 2)
+    readonly property real      _buttonWidth:       Math.round(_defaultTextWidth * 18)
     readonly property string    _armedVehicleText:  "This operation cannot be performed while vehicle is armed."
 
     property string _messagePanelText:              "missing message panel text"
@@ -120,8 +120,14 @@ Rectangle {
         target: multiVehicleManager
 
         onParameterReadyVehicleAvailableChanged: {
-            summaryButton.checked = true
-            showSummaryPanel()
+            if (parameterReadyVehicleAvailable || summaryButton.checked || setupButtonGroup.current != firmwareButton) {
+                // Show/Reload the Summary panel when:
+                //      A new vehicle shows up
+                //      The summary panel is already showing and the active vehicle goes away
+                //      The active vehicle goes away and we are not on the Firmware panel.
+                summaryButton.checked = true
+                showSummaryPanel()
+            }
         }
     }
 
@@ -159,7 +165,8 @@ Rectangle {
                 horizontalAlignment:    Text.AlignHCenter
                 wrapMode:               Text.WordWrap
                 font.pixelSize:         ScreenTools.largeFontPixelSize
-                text:                   "Connect vehicle to your device and QGroundControl will automatically detect to it. Click Firmware on the left to upgrade your vehicle."
+                text:                   "Connect vehicle to your device and QGroundControl will automatically detect it." +
+                                            (ScreenTools.isMobile ? "" : " Click Firmware on the left to upgrade your vehicle.")
 
                 onLinkActivated: Qt.openUrlExternally(link)
             }
@@ -211,16 +218,13 @@ Rectangle {
         anchors.right:      parent.right
         color:              qgcPal.window
 
-        Flickable {
+        QGCFlickable {
             id:                 buttonScroll
             width:              buttonColumn.width
             anchors.topMargin:  _defaultTextHeight / 2
             anchors.top:        parent.top
             anchors.bottom:     parent.bottom
-            clip:               true
             contentHeight:      buttonColumn.height
-            contentWidth:       buttonColumn.width
-            boundsBehavior:     Flickable.StopAtBounds
             flickableDirection: Flickable.VerticalFlick
 
             Column {

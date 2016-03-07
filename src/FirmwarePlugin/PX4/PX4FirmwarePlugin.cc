@@ -25,6 +25,7 @@
 ///     @author Don Gagne <don@thegagnes.com>
 
 #include "PX4FirmwarePlugin.h"
+#include "PX4ParameterMetaData.h"
 #include "AutoPilotPlugins/PX4/PX4AutoPilotPlugin.h"    // FIXME: Hack
 
 #include <QDebug>
@@ -68,7 +69,7 @@ struct Modes2Name {
 };
 
 /// Tranlates from PX4 custom modes to flight mode names
-// FIXME: Doens't handle fixed-wing/multi-rotor name differences
+
 static const struct Modes2Name rgModes2Name[] = {
     { PX4_CUSTOM_MAIN_MODE_MANUAL,      0,                                  "Manual",           true },
     { PX4_CUSTOM_MAIN_MODE_ACRO,        0,                                  "Acro",             true },
@@ -77,12 +78,12 @@ static const struct Modes2Name rgModes2Name[] = {
     { PX4_CUSTOM_MAIN_MODE_ALTCTL,      0,                                  "Altitude Control", true },
     { PX4_CUSTOM_MAIN_MODE_POSCTL,      0,                                  "Position Control", true },
     { PX4_CUSTOM_MAIN_MODE_OFFBOARD,    0,                                  "Offboard Control", true },
-    { PX4_CUSTOM_MAIN_MODE_AUTO,        PX4_CUSTOM_SUB_MODE_AUTO_READY,     "Auto Ready",       false },
-    { PX4_CUSTOM_MAIN_MODE_AUTO,        PX4_CUSTOM_SUB_MODE_AUTO_TAKEOFF,   "Taking Off",       false },
-    { PX4_CUSTOM_MAIN_MODE_AUTO,        PX4_CUSTOM_SUB_MODE_AUTO_LOITER,    "Loiter",           true },
-    { PX4_CUSTOM_MAIN_MODE_AUTO,        PX4_CUSTOM_SUB_MODE_AUTO_MISSION,   "Mission",          true },
-    { PX4_CUSTOM_MAIN_MODE_AUTO,        PX4_CUSTOM_SUB_MODE_AUTO_RTL,       "Return To Land",   true },
-    { PX4_CUSTOM_MAIN_MODE_AUTO,        PX4_CUSTOM_SUB_MODE_AUTO_LAND,      "Landing",          false },
+    { PX4_CUSTOM_MAIN_MODE_AUTO,        PX4_CUSTOM_SUB_MODE_AUTO_READY,     "Auto: Ready",       false },
+    { PX4_CUSTOM_MAIN_MODE_AUTO,        PX4_CUSTOM_SUB_MODE_AUTO_TAKEOFF,   "Auto: Takeoff",       false },
+    { PX4_CUSTOM_MAIN_MODE_AUTO,        PX4_CUSTOM_SUB_MODE_AUTO_LOITER,    "Auto: Pause",           true },
+    { PX4_CUSTOM_MAIN_MODE_AUTO,        PX4_CUSTOM_SUB_MODE_AUTO_MISSION,   "Auto: Mission",          true },
+    { PX4_CUSTOM_MAIN_MODE_AUTO,        PX4_CUSTOM_SUB_MODE_AUTO_RTL,       "Auto: Return To Land",   true },
+    { PX4_CUSTOM_MAIN_MODE_AUTO,        PX4_CUSTOM_SUB_MODE_AUTO_LAND,      "Auto: Landing",          false },
 };
 
 
@@ -204,9 +205,15 @@ bool PX4FirmwarePlugin::sendHomePositionToVehicle(void)
     return false;
 }
 
-void PX4FirmwarePlugin::addMetaDataToFact(Fact* fact, MAV_TYPE vehicleType)
+void PX4FirmwarePlugin::addMetaDataToFact(QObject* parameterMetaData, Fact* fact, MAV_TYPE vehicleType)
 {
-    _parameterMetaData.addMetaDataToFact(fact, vehicleType);
+    PX4ParameterMetaData* px4MetaData = qobject_cast<PX4ParameterMetaData*>(parameterMetaData);
+
+    if (px4MetaData) {
+        px4MetaData->addMetaDataToFact(fact, vehicleType);
+    } else {
+        qWarning() << "Internal error: pointer passed to PX4FirmwarePlugin::addMetaDataToFact not PX4ParameterMetaData";
+    }
 }
 
 QList<MAV_CMD> PX4FirmwarePlugin::supportedMissionCommands(void)
@@ -214,12 +221,29 @@ QList<MAV_CMD> PX4FirmwarePlugin::supportedMissionCommands(void)
     QList<MAV_CMD> list;
 
     list << MAV_CMD_NAV_WAYPOINT
-         << MAV_CMD_NAV_LOITER_UNLIM << MAV_CMD_NAV_LOITER_TURNS << MAV_CMD_NAV_LOITER_TIME
-         << MAV_CMD_NAV_RETURN_TO_LAUNCH << MAV_CMD_NAV_LAND << MAV_CMD_NAV_TAKEOFF
-         << MAV_CMD_NAV_ROI
+         << MAV_CMD_NAV_LOITER_UNLIM << MAV_CMD_NAV_LOITER_TIME
+         << MAV_CMD_NAV_LAND << MAV_CMD_NAV_TAKEOFF
          << MAV_CMD_DO_JUMP
-         << MAV_CMD_CONDITION_DELAY
-         << MAV_CMD_DO_VTOL_TRANSITION
-         << MAV_CMD_DO_DIGICAM_CONTROL;
+         << MAV_CMD_DO_VTOL_TRANSITION << MAV_CMD_NAV_VTOL_TAKEOFF << MAV_CMD_NAV_VTOL_LAND
+         << MAV_CMD_DO_DIGICAM_CONTROL
+         << MAV_CMD_DO_SET_CAM_TRIGG_DIST
+         << MAV_CMD_DO_SET_SERVO
+         << MAV_CMD_DO_CHANGE_SPEED
+         << MAV_CMD_NAV_PATHPLANNING;
     return list;
+}
+
+void PX4FirmwarePlugin::missionCommandOverrides(QString& commonJsonFilename, QString& fixedWingJsonFilename, QString& multiRotorJsonFilename) const
+{
+    // No overrides
+    commonJsonFilename = QStringLiteral(":/json/PX4/MavCmdInfoCommon.json");
+    fixedWingJsonFilename = QStringLiteral(":/json/PX4/MavCmdInfoFixedWing.json");
+    multiRotorJsonFilename = QStringLiteral(":/json/PX4/MavCmdInfoMultiRotor.json");
+}
+
+QObject* PX4FirmwarePlugin::loadParameterMetaData(const QString& metaDataFile)
+{
+    PX4ParameterMetaData* metaData = new PX4ParameterMetaData;
+    metaData->loadParameterFactMetaDataFile(metaDataFile);
+    return metaData;
 }

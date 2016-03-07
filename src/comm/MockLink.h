@@ -157,10 +157,6 @@ signals:
 public slots:
     virtual void writeBytes(const char *bytes, qint64 cBytes);
 
-protected slots:
-    // FIXME: This should not be part of LinkInterface. It is an internal link implementation detail.
-    virtual void readBytes(void);
-
 private slots:
     void _run1HzTasks(void);
     void _run10HzTasks(void);
@@ -187,10 +183,12 @@ private:
     void _handleParamRequestRead(const mavlink_message_t& msg);
     void _handleFTP(const mavlink_message_t& msg);
     void _handleCommandLong(const mavlink_message_t& msg);
+    void _handleManualControl(const mavlink_message_t& msg);
     float _floatUnionForParam(int componentId, const QString& paramName);
     void _setParamFloatUnionIntoMap(int componentId, const QString& paramName, float paramFloat);
     void _sendHomePosition(void);
     void _sendGpsRawInt(void);
+    void _sendVibration(void);
     void _sendStatusTextMessages(void);
 
     static MockLink* _startMockLink(MockConfiguration* mockConfig);

@@ -11,8 +11,8 @@ import QGroundControl.Controls 1.0
 QGCTextField {
     id: _textField
 
-    text:       fact.valueString
-    unitsLabel: fact.units
+    text:       fact ? fact.valueString : ""
+    unitsLabel: fact ? fact.units : ""
     showUnits:  true
 
     property Fact   fact:           null
@@ -23,7 +23,7 @@ QGCTextField {
     inputMethodHints:   Qt.ImhFormattedNumbersOnly
 
     onEditingFinished: {
-        if (qgcView) {
+        if (typeof qgcView !== 'undefined' && qgcView) {
             var errorString = fact.validate(text, false /* convertOnly */)
             if (errorString == "") {
                 fact.value = text

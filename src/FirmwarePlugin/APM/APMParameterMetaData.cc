@@ -21,9 +21,6 @@
  
  ======================================================================*/
 
-/// @file
-///     @author Don Gagne <don@thegagnes.com>
-
 #include "APMParameterMetaData.h"
 #include "QGCApplication.h"
 #include "QGCLoggingCategory.h"
@@ -32,16 +29,15 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QDebug>
+#include <QStack>
 
-QGC_LOGGING_CATEGORY(APMParameterMetaDataLog, "APMParameterMetaDataLog")
-QGC_LOGGING_CATEGORY(APMParameterMetaDataVerboseLog, "APMParameterMetaDataVerboseLog")
+QGC_LOGGING_CATEGORY(APMParameterMetaDataLog,           "APMParameterMetaDataLog")
+QGC_LOGGING_CATEGORY(APMParameterMetaDataVerboseLog,    "APMParameterMetaDataVerboseLog")
 
-bool                                          APMParameterMetaData::_parameterMetaDataLoaded = false;
-QMap<QString, ParameterNametoFactMetaDataMap> APMParameterMetaData::_vehicleTypeToParametersMap;
-
-APMParameterMetaData::APMParameterMetaData(QObject* parent) :
-    QObject(parent)
+APMParameterMetaData::APMParameterMetaData(void)
+    : _parameterMetaDataLoaded(false)
 {
+    // APM meta data is not yet versioned
     _loadParameterFactMetaData();
 }
 
@@ -145,7 +141,7 @@ void APMParameterMetaData::_loadParameterFactMetaData()
     // Fixme:: always picking up the bundled xml, we would like to update it from web
     // just not sure right now as the xml is in bad shape.
     if (parameterFilename.isEmpty() || !QFile(parameterFilename).exists()) {
-        parameterFilename = ":/FirmwarePlugin/APM/apm.pdef.xml";
+        parameterFilename = ":/FirmwarePlugin/APM/APMParameterFactMetaData.xml";
     }
 
     qCDebug(APMParameterMetaDataLog) << "Loading parameter meta data:" << parameterFilename;
@@ -342,6 +338,7 @@ bool APMParameterMetaData::parseParameterAttributes(QXmlStreamReader& xml, APMFa
             // skip empty elements. Somehow I am getting lot of these. Dont know what to do with them.
         } else if (elementName == "field") {
             QString attributeName = xml.attributes().value("name").toString();
+
             if ( attributeName == "Range") {
                 QString range = xml.readElementText().trimmed();
                 QStringList rangeList = range.split(' ');
@@ -402,6 +399,11 @@ bool APMParameterMetaData::parseParameterAttributes(QXmlStreamReader& xml, APMFa
                 if (parseError) {
                     rawMetaData->bitmask.clear();
                 }
+            } else if (attributeName == "RebootRequired") {
+                QString strValue = xml.readElementText().trimmed();
+                if (strValue.compare("true", Qt::CaseInsensitive) == 0) {
+                    rawMetaData->rebootRequired = true;
+                }
             }
         } else if (elementName == "values") {
             // doing nothing individual value will follow anyway. May be used for sanity checking.
@@ -421,11 +423,8 @@ bool APMParameterMetaData::parseParameterAttributes(QXmlStreamReader& xml, APMFa
     return true;
 }
 
-/// Override from FactLoad which connects the meta data to the fact
 void APMParameterMetaData::addMetaDataToFact(Fact* fact, MAV_TYPE vehicleType)
 {
-    _loadParameterFactMetaData();
-
     const QString mavTypeString = mavTypeToString(vehicleType);
     APMFactMetaDataRaw* rawMetaData = NULL;
 
@@ -447,6 +446,7 @@ void APMParameterMetaData::addMetaDataToFact(Fact* fact, MAV_TYPE vehicleType)
 
     metaData->setName(rawMetaData->name);
     metaData->setGroup(rawMetaData->group);
+    metaData->setRebootRequired(rawMetaData->rebootRequired);
 
     if (!rawMetaData->shortDescription.isEmpty()) {
         metaData->setShortDescription(rawMetaData->shortDescription);
@@ -580,6 +580,26 @@ void APMParameterMetaData::addMetaDataToFact(Fact* fact, MAV_TYPE vehicleType)
         }
     }
 
+    if (!rawMetaData->incrementSize.isEmpty()) {
+        double  increment;
+        bool    ok;
+        increment = rawMetaData->incrementSize.toDouble(&ok);
+        if (ok) {
+            metaData->setIncrement(increment);
+        } else {
+            qCDebug(APMParameterMetaDataLog) << "Invalid value for increment, name:" << metaData->name() << " increment:" << rawMetaData->incrementSize;
+        }
+    }
+
     // FixMe:: not handling increment size as their is no place for it in FactMetaData and no ui
     fact->setMetaData(metaData);
+}
+
+void APMParameterMetaData::getParameterMetaDataVersionInfo(const QString& metaDataFile, int& majorVersion, int& minorVersion)
+{
+    Q_UNUSED(metaDataFile);
+
+    // Versioning not yet supported
+    majorVersion = -1;
+    minorVersion = -1;
 }

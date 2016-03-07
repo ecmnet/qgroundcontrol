@@ -41,7 +41,7 @@ class APMSensorsComponentController : public FactPanelController
     
 public:
     APMSensorsComponentController(void);
-    
+
     Q_PROPERTY(bool fixedWing READ fixedWing CONSTANT)
     
     Q_PROPERTY(QQuickItem* statusLog MEMBER _statusLog)

@@ -23,8 +23,8 @@ exists($${OUT_PWD}/qgroundcontrol.pro) {
 
 message(Qt version $$[QT_VERSION])
 
-!equals(QT_MAJOR_VERSION, 5) | !greaterThan(QT_MINOR_VERSION, 3) {
-    error("Unsupported Qt version, 5.4+ is required")
+!equals(QT_MAJOR_VERSION, 5) | !greaterThan(QT_MINOR_VERSION, 4) {
+    error("Unsupported Qt version, 5.5+ is required")
 }
 
 include(QGCCommon.pri)
@@ -63,7 +63,8 @@ LinuxBuild {
 # Qt configuration
 
 CONFIG += qt \
-    thread
+    thread \
+    c++11
 
 QT += \
     concurrent \
@@ -89,10 +90,6 @@ QT += \
 contains(DEFINES, QGC_ENABLE_BLUETOOTH) {
 QT += \
     bluetooth \
-}
-
-contains(DEFINES, QGC_NOTIFY_TUNES_ENABLED) {
-    QT += multimedia
 }
 
 #  testlib is needed even in release flavor for QSignalSpy support
@@ -129,9 +126,11 @@ LinuxBuild {
     CONFIG += qesp_linux_udev
 }
 
-WindowsBuild {
-    RC_FILE = $${BASEDIR}/qgroundcontrol.rc
-}
+RC_ICONS = resources/icons/qgroundcontrol.ico
+QMAKE_TARGET_COMPANY = "qgroundcontrol.org"
+QMAKE_TARGET_DESCRIPTION = "Open source ground control app provided by QGroundControl dev team"
+QMAKE_TARGET_COPYRIGHT = "Copyright (C) 2016 QGroundControl Development Team. All rights reserved."
+QMAKE_TARGET_PRODUCT = "qgroundcontrol"
 
 #
 # Build-specific settings
@@ -183,6 +182,7 @@ INCLUDEPATH += \
     src/comm \
     src/FlightDisplay \
     src/FlightMap \
+    src/FlightMap/Widgets \
     src/input \
     src/Joystick \
     src/lib/qmapcontrol \
@@ -200,15 +200,12 @@ INCLUDEPATH += \
     src/ui/uas \
     src/VehicleSetup \
     src/ViewWidgets \
+    src/QtLocationPlugin \
+    src/QtLocationPlugin/QMLControl \
 
 FORMS += \
     src/ui/MainWindow.ui \
     src/QGCQmlWidgetHolder.ui \
-
-!iOSBuild {
-FORMS += \
-    src/ui/SerialSettings.ui \
-}
 
 !MobileBuild {
 FORMS += \
@@ -247,16 +244,22 @@ HEADERS += \
     src/comm/UDPLink.h \
     src/FlightDisplay/FlightDisplayViewController.h \
     src/FlightMap/FlightMapSettings.h \
+    src/FlightMap/Widgets/ValuesWidgetController.h \
     src/GAudioOutput.h \
     src/HomePositionManager.h \
     src/Joystick/Joystick.h \
     src/Joystick/JoystickManager.h \
+    src/JsonHelper.h \
     src/LogCompressor.h \
     src/MG.h \
+    src/MissionManager/MissionCommandList.h \
     src/MissionManager/MissionCommands.h \
     src/MissionManager/MissionController.h \
     src/MissionManager/MissionItem.h \
     src/MissionManager/MissionManager.h \
+    src/MissionManager/ComplexMissionItem.h \
+    src/MissionManager/SimpleMissionItem.h \
+    src/MissionManager/VisualMissionItem.h \
     src/QGC.h \
     src/QGCApplication.h \
     src/QGCComboBox.h \
@@ -285,7 +288,8 @@ HEADERS += \
     src/AutoPilotPlugins/PX4/PX4AirframeLoader.h \
     src/AutoPilotPlugins/APM/APMAirframeLoader.h \
     src/QmlControls/QGCImageProvider.h \
-    src/AutoPilotPlugins/APM/APMRemoteParamsDownloader.h
+    src/AutoPilotPlugins/APM/APMRemoteParamsDownloader.h \
+    src/QtLocationPlugin/QMLControl/QGCMapEngineManager.h \
 
 DebugBuild {
 HEADERS += \
@@ -308,7 +312,6 @@ contains(DEFINES, QGC_ENABLE_BLUETOOTH) {
 HEADERS += \
     src/comm/QGCSerialPortInfo.h \
     src/comm/SerialLink.h \
-    src/ui/SerialConfigurationWindow.h \
 }
 
 !MobileBuild {
@@ -371,16 +374,22 @@ SOURCES += \
     src/comm/UDPLink.cc \
     src/FlightDisplay/FlightDisplayViewController.cc \
     src/FlightMap/FlightMapSettings.cc \
+    src/FlightMap/Widgets/ValuesWidgetController.cc \
     src/GAudioOutput.cc \
     src/HomePositionManager.cc \
     src/Joystick/Joystick.cc \
     src/Joystick/JoystickManager.cc \
+    src/JsonHelper.cc \
     src/LogCompressor.cc \
     src/main.cc \
+    src/MissionManager/MissionCommandList.cc \
     src/MissionManager/MissionCommands.cc \
     src/MissionManager/MissionController.cc \
     src/MissionManager/MissionItem.cc \
     src/MissionManager/MissionManager.cc \
+    src/MissionManager/ComplexMissionItem.cc \
+    src/MissionManager/SimpleMissionItem.cc \
+    src/MissionManager/VisualMissionItem.cc \
     src/QGC.cc \
     src/QGCApplication.cc \
     src/QGCComboBox.cc \
@@ -406,7 +415,8 @@ SOURCES += \
     src/AutoPilotPlugins/PX4/PX4AirframeLoader.cc \
     src/AutoPilotPlugins/APM/APMAirframeLoader.cc \
     src/QmlControls/QGCImageProvider.cc \
-    src/AutoPilotPlugins/APM/APMRemoteParamsDownloader.cc
+    src/AutoPilotPlugins/APM/APMRemoteParamsDownloader.cc \
+    src/QtLocationPlugin/QMLControl/QGCMapEngineManager.cc \
 
 DebugBuild {
 SOURCES += \
@@ -419,7 +429,6 @@ SOURCES += \
 SOURCES += \
     src/comm/QGCSerialPortInfo.cc \
     src/comm/SerialLink.cc \
-    src/ui/SerialConfigurationWindow.cc \
 }
 
 contains(DEFINES, QGC_ENABLE_BLUETOOTH) {
@@ -478,13 +487,8 @@ SOURCES += \
 #
 # Unit Test specific configuration goes here
 #
-# We have to special case Windows debug_and_release builds because you can't have files
-# which are only in the debug variant [QTBUG-40351]. So in this case we include unit tests
-# even in the release variant. If you want a Windows release build with no unit tests run
-# qmake with CONFIG-=debug_and_release CONFIG+=release.
-#
 
-DebugBuild|WindowsDebugAndRelease {
+DebugBuild {
 
 HEADERS += src/QmlControls/QmlTestWidget.h
 SOURCES += src/QmlControls/QmlTestWidget.cc
@@ -498,10 +502,12 @@ HEADERS += \
     src/FactSystem/FactSystemTestBase.h \
     src/FactSystem/FactSystemTestGeneric.h \
     src/FactSystem/FactSystemTestPX4.h \
+    src/MissionManager/ComplexMissionItemTest.h \
     src/MissionManager/MissionControllerTest.h \
     src/MissionManager/MissionControllerManagerTest.h \
     src/MissionManager/MissionItemTest.h \
     src/MissionManager/MissionManagerTest.h \
+    src/MissionManager/SimpleMissionItemTest.h \
     src/qgcunittest/GeoTest.h \
     src/qgcunittest/FileDialogTest.h \
     src/qgcunittest/FileManagerTest.h \
@@ -521,10 +527,12 @@ SOURCES += \
     src/FactSystem/FactSystemTestBase.cc \
     src/FactSystem/FactSystemTestGeneric.cc \
     src/FactSystem/FactSystemTestPX4.cc \
+    src/MissionManager/ComplexMissionItemTest.cc \
     src/MissionManager/MissionControllerTest.cc \
     src/MissionManager/MissionControllerManagerTest.cc \
     src/MissionManager/MissionItemTest.cc \
     src/MissionManager/MissionManagerTest.cc \
+    src/MissionManager/SimpleMissionItemTest.cc \
     src/qgcunittest/GeoTest.cc \
     src/qgcunittest/FileDialogTest.cc \
     src/qgcunittest/FileManagerTest.cc \
@@ -540,8 +548,8 @@ SOURCES += \
     src/qgcunittest/UnitTest.cc \
     src/qgcunittest/UnitTestList.cc \
     src/VehicleSetup/SetupViewTest.cc \
-} # DebugBuild|WindowsDebugAndRelease
-} # MobileBuild
+} # !MobileBuild
+} # DebugBuild
 
 #
 # Firmware Plugin Support
@@ -566,7 +574,6 @@ HEADERS+= \
     src/AutoPilotPlugins/APM/APMAirframeComponentAirframes.h \
     src/AutoPilotPlugins/APM/APMCameraComponent.h \
     src/AutoPilotPlugins/APM/APMCompassCal.h \
-    src/AutoPilotPlugins/APM/APMComponent.h \
     src/AutoPilotPlugins/APM/APMFlightModesComponent.h \
     src/AutoPilotPlugins/APM/APMFlightModesComponentController.h \
     src/AutoPilotPlugins/APM/APMPowerComponent.h \
@@ -576,16 +583,18 @@ HEADERS+= \
     src/AutoPilotPlugins/APM/APMSensorsComponentController.h \
     src/AutoPilotPlugins/APM/APMTuningComponent.h \
     src/AutoPilotPlugins/Common/RadioComponentController.h \
+    src/AutoPilotPlugins/Common/ESP8266ComponentController.h \
+    src/AutoPilotPlugins/Common/ESP8266Component.h \
     src/AutoPilotPlugins/Generic/GenericAutoPilotPlugin.h \
     src/AutoPilotPlugins/PX4/AirframeComponent.h \
     src/AutoPilotPlugins/PX4/AirframeComponentAirframes.h \
     src/AutoPilotPlugins/PX4/AirframeComponentController.h \
     src/AutoPilotPlugins/PX4/FlightModesComponent.h \
-    src/AutoPilotPlugins/PX4/FlightModesComponentController.h \
+    src/AutoPilotPlugins/PX4/PX4AdvancedFlightModesController.h \
+    src/AutoPilotPlugins/PX4/PX4SimpleFlightModesController.h \
     src/AutoPilotPlugins/PX4/PowerComponent.h \
     src/AutoPilotPlugins/PX4/PowerComponentController.h \
     src/AutoPilotPlugins/PX4/PX4AutoPilotPlugin.h \
-    src/AutoPilotPlugins/PX4/PX4Component.h \
     src/AutoPilotPlugins/PX4/PX4RadioComponent.h \
     src/AutoPilotPlugins/PX4/SafetyComponent.h \
     src/AutoPilotPlugins/PX4/SensorsComponent.h \
@@ -598,7 +607,6 @@ HEADERS+= \
     src/FirmwarePlugin/APM/ArduCopterFirmwarePlugin.h \
     src/FirmwarePlugin/APM/ArduPlaneFirmwarePlugin.h \
     src/FirmwarePlugin/APM/ArduRoverFirmwarePlugin.h \
-    src/FirmwarePlugin/Generic/GenericFirmwarePlugin.h \
     src/FirmwarePlugin/PX4/PX4FirmwarePlugin.h \
     src/FirmwarePlugin/PX4/PX4ParameterMetaData.h \
     src/Vehicle/MultiVehicleManager.h \
@@ -622,7 +630,6 @@ SOURCES += \
     src/AutoPilotPlugins/APM/APMAirframeComponentController.cc \
     src/AutoPilotPlugins/APM/APMCameraComponent.cc \
     src/AutoPilotPlugins/APM/APMCompassCal.cc \
-    src/AutoPilotPlugins/APM/APMComponent.cc \
     src/AutoPilotPlugins/APM/APMFlightModesComponent.cc \
     src/AutoPilotPlugins/APM/APMFlightModesComponentController.cc \
     src/AutoPilotPlugins/APM/APMPowerComponent.cc \
@@ -632,17 +639,19 @@ SOURCES += \
     src/AutoPilotPlugins/APM/APMSensorsComponentController.cc \
     src/AutoPilotPlugins/APM/APMTuningComponent.cc \
     src/AutoPilotPlugins/Common/RadioComponentController.cc \
+    src/AutoPilotPlugins/Common/ESP8266ComponentController.cc \
+    src/AutoPilotPlugins/Common/ESP8266Component.cc \
     src/AutoPilotPlugins/APM/APMAirframeComponentAirframes.cc \
     src/AutoPilotPlugins/Generic/GenericAutoPilotPlugin.cc \
     src/AutoPilotPlugins/PX4/AirframeComponent.cc \
     src/AutoPilotPlugins/PX4/AirframeComponentAirframes.cc \
     src/AutoPilotPlugins/PX4/AirframeComponentController.cc \
     src/AutoPilotPlugins/PX4/FlightModesComponent.cc \
-    src/AutoPilotPlugins/PX4/FlightModesComponentController.cc \
+    src/AutoPilotPlugins/PX4/PX4AdvancedFlightModesController.cc \
+    src/AutoPilotPlugins/PX4/PX4SimpleFlightModesController.cc \
     src/AutoPilotPlugins/PX4/PowerComponent.cc \
     src/AutoPilotPlugins/PX4/PowerComponentController.cc \
     src/AutoPilotPlugins/PX4/PX4AutoPilotPlugin.cc \
-    src/AutoPilotPlugins/PX4/PX4Component.cc \
     src/AutoPilotPlugins/PX4/PX4RadioComponent.cc \
     src/AutoPilotPlugins/PX4/SafetyComponent.cc \
     src/AutoPilotPlugins/PX4/SensorsComponent.cc \
@@ -653,8 +662,8 @@ SOURCES += \
     src/FirmwarePlugin/APM/ArduCopterFirmwarePlugin.cc \
     src/FirmwarePlugin/APM/ArduPlaneFirmwarePlugin.cc \
     src/FirmwarePlugin/APM/ArduRoverFirmwarePlugin.cc \
+    src/FirmwarePlugin/FirmwarePlugin.cc \
     src/FirmwarePlugin/FirmwarePluginManager.cc \
-    src/FirmwarePlugin/Generic/GenericFirmwarePlugin.cc \
     src/FirmwarePlugin/PX4/PX4FirmwarePlugin.cc \
     src/FirmwarePlugin/PX4/PX4ParameterMetaData.cc \
     src/Vehicle/MultiVehicleManager.cc \
@@ -678,6 +687,7 @@ INCLUDEPATH += \
 
 HEADERS += \
     src/FactSystem/Fact.h \
+    src/FactSystem/FactGroup.h \
     src/FactSystem/FactControls/FactPanelController.h \
     src/FactSystem/FactMetaData.h \
     src/FactSystem/FactSystem.h \
@@ -687,6 +697,7 @@ HEADERS += \
 
 SOURCES += \
     src/FactSystem/Fact.cc \
+    src/FactSystem/FactGroup.cc \
     src/FactSystem/FactControls/FactPanelController.cc \
     src/FactSystem/FactMetaData.cc \
     src/FactSystem/FactSystem.cc \

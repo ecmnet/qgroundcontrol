@@ -68,10 +68,9 @@ QGCView {
         id:             panel
         anchors.fill:   parent
 
-        Flickable {
+        QGCFlickable {
             clip:               true
             anchors.fill:       parent
-            boundsBehavior:     Flickable.StopAtBounds
             contentHeight:      sliderRect.y + sliderRect.height
             flickableDirection: Flickable.VerticalFlick
 
@@ -123,7 +122,7 @@ QGCView {
                                 anchors.right:      parent.right
                                 minimumValue:       min
                                 maximumValue:       max
-                                stepSize:           step
+                                stepSize:           isNaN(fact.increment) ? step : fact.increment
                                 tickmarksEnabled:   true
 
                                 property Fact fact: controller.getParameterFact(-1, param)
@@ -138,6 +137,6 @@ QGCView {
                     } // Repeater
                 } // Column
             } // Rectangle
-        } // Flickable
+        } // QGCFlickable
     } // QGCViewPanel
 } // QGCView

@@ -18,8 +18,10 @@ QGCButton               1.0 QGCButton.qml
 QGCCheckBox             1.0 QGCCheckBox.qml
 QGCColoredImage         1.0 QGCColoredImage.qml
 QGCComboBox             1.0 QGCComboBox.qml
+QGCFlickable            1.0 QGCFlickable.qml
 QGCLabel                1.0 QGCLabel.qml
 QGCMovableItem          1.0 QGCMovableItem.qml
+QGCPipable              1.0 QGCPipable.qml
 QGCRadioButton          1.0 QGCRadioButton.qml
 QGCTextField            1.0 QGCTextField.qml
 QGCToolBarButton        1.0 QGCToolBarButton.qml
@@ -33,3 +35,4 @@ SubMenuButton           1.0 SubMenuButton.qml
 VehicleRotationCal      1.0 VehicleRotationCal.qml
 VehicleSummaryRow       1.0 VehicleSummaryRow.qml
 ViewWidget              1.0 ViewWidget.qml
+OfflineMapButton        1.0 OfflineMapButton.qml

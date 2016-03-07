@@ -35,13 +35,13 @@ Row {
     spacing:  tbSpacing * 2
 
     function getSatStrength(hdop) {
-        if (hdop < 3)
+        if (hdop <= 1.0)
             return 100
-        if (hdop < 6)
+        if (hdop <= 1.4)
             return 75
-        if (hdop < 11)
+        if (hdop <= 1.8)
             return 50
-        if (hdop < 21)
+        if (hdop <= 3.0)
             return 25
         return 0
     }
@@ -65,27 +65,22 @@ Row {
     }
 
     function getBatteryVoltageText() {
-        if (activeVehicle.batteryVoltage > 0) {
-            //-- TODO: Need number of cells so I can show cell voltage instead of total voltage
-            //if (battNumCells && battNumCells.value) {
-            //    return (activeVehicle.batteryVoltage / battNumCells.value).toFixed(2) + 'V'
-            //} else {
-                return activeVehicle.batteryVoltage.toFixed(1) + 'V'
-            //}
+        if (activeVehicle.battery.voltage.value >= 0) {
+            return activeVehicle.battery.voltage.valueString + activeVehicle.battery.voltage.units
         }
         return 'N/A';
     }
 
     function getBatteryPercentageText() {
         if(activeVehicle) {
-            if(activeVehicle.batteryPercent > 98.9) {
+            if(activeVehicle.battery.percentRemaining.value > 98.9) {
                 return "100%"
             }
-            if(activeVehicle.batteryPercent > 0.1) {
-                return activeVehicle.batteryPercent.toFixed(0) + "%"
+            if(activeVehicle.battery.percentRemaining.value > 0.1) {
+                return activeVehicle.battery.percentRemaining.valueString + activeVehicle.battery.percentRemaining.units
             }
-            if(activeVehicle.batteryVoltage > 0) {
-                return activeVehicle.batteryVoltage.toFixed(1) + "V"
+            if(activeVehicle.battery.voltage.value >= 0) {
+                return activeVehicle.battery.voltage.valueString + activeVehicle.battery.voltage.units
             }
         }
         return "N/A"
@@ -176,20 +171,20 @@ Row {
                 smooth:         true
                 width:          mainWindow.tbCellHeight * 0.65
                 height:         mainWindow.tbCellHeight * 0.5
-                opacity:        activeVehicle ? (activeVehicle.satelliteCount < 1 ? 0.5 : 1) : 0.5
+                opacity:        (activeVehicle && activeVehicle.gps.count.value >= 0) ? 1 : 0.5
                 anchors.verticalCenter: parent.verticalCenter
             }
             SignalStrength {
                 size:           mainWindow.tbCellHeight * 0.5
-                percent:        activeVehicle ? getSatStrength(activeVehicle.satRawHDOP) : ""
+                percent:        activeVehicle ? getSatStrength(activeVehicle.gps.hdop.value) : ""
                 anchors.verticalCenter: parent.verticalCenter
             }
         }
         QGCLabel {
-            text:           activeVehicle ? activeVehicle.satelliteCount : 0
+            text:           activeVehicle ? activeVehicle.gps.hdop.valueString : ""
+            visible:        activeVehicle && !isNaN(activeVehicle.gps.hdop.value)
             font.pixelSize: tbFontSmall
             color:          colorWhite
-            opacity:        activeVehicle ? (activeVehicle.satelliteCount < 1 ? 0.5 : 1) : 0.5
             anchors.top:    parent.top
             anchors.leftMargin: gpsIcon.width
             anchors.left:   parent.left
@@ -276,7 +271,7 @@ Row {
         id: batteryStatus
         width:  battRow.width * 1.1
         height: mainWindow.tbCellHeight
-        opacity: activeVehicle ? ((activeVehicle.batteryVoltage > 0) ? 1 : 0.5) : 0.5
+        opacity: (activeVehicle && activeVehicle.battery.voltage.value >= 0) ? 1 : 0.5
         Row {
             id:         battRow
             height:     mainWindow.tbCellHeight
@@ -299,8 +294,10 @@ Row {
         MouseArea {
             anchors.fill:   parent
             onClicked: {
-                var centerX = mapToItem(toolBar, x, y).x + (width / 2)
-                mainWindow.showPopUp(batteryInfo, centerX)
+                if (activeVehicle) {
+                    var centerX = mapToItem(toolBar, x, y).x + (width / 2)
+                    mainWindow.showPopUp(batteryInfo, centerX)
+                }
             }
         }
     }
@@ -325,7 +322,6 @@ Row {
 
             MenuItem {
                 checkable:      true
-                checked:        vehicle ? vehicle.active : false
                 onTriggered:    multiVehicleManager.activeVehicle = vehicle
 
                 property int vehicleId: Number(text.split(" ")[1])
@@ -355,7 +351,7 @@ Row {
 
         Connections {
             target:         multiVehicleManager.vehicles
-            onCountChanged: vehicleSelectorButton.updateVehicleMenu
+            onCountChanged: vehicleSelectorButton.updateVehicleMenu()
         }
     }
 

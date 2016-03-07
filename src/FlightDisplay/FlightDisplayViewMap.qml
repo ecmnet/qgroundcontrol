@@ -39,18 +39,22 @@ FlightMap {
     id:             flightMap
     anchors.fill:   parent
     mapName:        _mapName
-    latitude:       mainWindow.tabletPosition.latitude
-    longitude:      mainWindow.tabletPosition.longitude
 
-    property var    rootVehicleCoordinate:  _vehicleCoordinate
-    property bool   _followVehicle:         true
+    property bool   _followVehicle:                 true
+    property bool   _activeVehicleCoordinateValid:  multiVehicleManager.activeVehicle ? multiVehicleManager.activeVehicle.coordinateValid : false
+    property var    activeVehicleCoordinate:        multiVehicleManager.activeVehicle ? multiVehicleManager.activeVehicle.coordinate : QtPositioning.coordinate()
 
-    onRootVehicleCoordinateChanged: updateMapPosition(false /* force */)
+    Component.onCompleted: {
+        QGroundControl.flightMapPosition = center
+        QGroundControl.flightMapZoom = zoomLevel
+    }
+    onCenterChanged: QGroundControl.flightMapPosition = center
+    onZoomLevelChanged: QGroundControl.flightMapZoom = zoomLevel
 
-    function updateMapPosition(force) {
-        if (_followVehicle || force) {
-            flightMap.latitude  = root._vehicleCoordinate.latitude
-            flightMap.longitude = root._vehicleCoordinate.longitude
+    onActiveVehicleCoordinateChanged: {
+        if (_followVehicle && _activeVehicleCoordinateValid && activeVehicleCoordinate.isValid) {
+            _initialMapPositionSet = true
+            flightMap.center  = activeVehicleCoordinate
         }
     }
 
@@ -65,7 +69,7 @@ FlightMap {
         delegate:
             MapPolyline {
                 line.width: 3
-                line.color: "orange"
+                line.color: "red"
                 z:          QGroundControl.zOrderMapItems - 1
                 path: [
                     { latitude: object.coordinate1.latitude, longitude: object.coordinate1.longitude },
@@ -89,7 +93,7 @@ FlightMap {
 
     // Add the mission items to the map
     MissionItemView {
-        model: _mainIsMap ? _missionController.missionItems : 0
+        model: _mainIsMap ? _missionController.visualItems : 0
     }
 
     // Add lines between waypoints

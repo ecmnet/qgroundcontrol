@@ -39,10 +39,10 @@ QGroundControlQmlGlobal::QGroundControlQmlGlobal(QGCApplication* app)
     , _linkManager(NULL)
     , _missionCommands(NULL)
     , _multiVehicleManager(NULL)
+    , _mapEngineManager(NULL)
     , _virtualTabletJoystick(false)
     , _offlineEditingFirmwareTypeFact(QString(), "OfflineEditingFirmwareType", FactMetaData::valueTypeUint32, (uint32_t)MAV_AUTOPILOT_ARDUPILOTMEGA)
     , _offlineEditingFirmwareTypeMetaData(FactMetaData::valueTypeUint32)
-
 {
     QSettings settings;
     _virtualTabletJoystick = settings.value(_virtualTabletJoystickKey, false). toBool();
@@ -50,11 +50,14 @@ QGroundControlQmlGlobal::QGroundControlQmlGlobal(QGCApplication* app)
     QStringList     firmwareEnumStrings;
     QVariantList    firmwareEnumValues;
 
-    firmwareEnumStrings << "APM Flight Stack" << "PX4 Flight Stack" << "Mavlink Generic Flight Stack";
+    firmwareEnumStrings << "ArduPilot Flight Stack" << "PX4 Flight Stack" << "Mavlink Generic Flight Stack";
     firmwareEnumValues << QVariant::fromValue((uint32_t)MAV_AUTOPILOT_ARDUPILOTMEGA) << QVariant::fromValue((uint32_t)MAV_AUTOPILOT_PX4) << QVariant::fromValue((uint32_t)MAV_AUTOPILOT_GENERIC);
 
     _offlineEditingFirmwareTypeMetaData.setEnumInfo(firmwareEnumStrings, firmwareEnumValues);
     _offlineEditingFirmwareTypeFact.setMetaData(&_offlineEditingFirmwareTypeMetaData);
+
+    // We clear the parent on this object since we run into shutdown problems caused by hybrid qml app. Instead we let it leak on shutdown.
+    setParent(NULL);
 }
 
 QGroundControlQmlGlobal::~QGroundControlQmlGlobal()
@@ -66,12 +69,12 @@ QGroundControlQmlGlobal::~QGroundControlQmlGlobal()
 void QGroundControlQmlGlobal::setToolbox(QGCToolbox* toolbox)
 {
     QGCTool::setToolbox(toolbox);
-
-    _flightMapSettings =    toolbox->flightMapSettings();
-    _homePositionManager =  toolbox->homePositionManager();
-    _linkManager =          toolbox->linkManager();
-    _missionCommands =      toolbox->missionCommands();
-    _multiVehicleManager =  toolbox->multiVehicleManager();
+    _flightMapSettings      = toolbox->flightMapSettings();
+    _homePositionManager    = toolbox->homePositionManager();
+    _linkManager            = toolbox->linkManager();
+    _missionCommands        = toolbox->missionCommands();
+    _multiVehicleManager    = toolbox->multiVehicleManager();
+    _mapEngineManager     = toolbox->mapEngineManager();
 }
 
 
@@ -179,12 +182,6 @@ void QGroundControlQmlGlobal::setIsSaveLogPromptNotArmed(bool prompt)
     emit isSaveLogPromptNotArmedChanged(prompt);
 }
 
-void QGroundControlQmlGlobal::setIsHeartBeatEnabled(bool enable)
-{
-    qgcApp()->toolbox()->mavlinkProtocol()->enableHeartbeats(enable);
-    emit isHeartBeatEnabledChanged(enable);
-}
-
 void QGroundControlQmlGlobal::setIsMultiplexingEnabled(bool enable)
 {
     qgcApp()->toolbox()->mavlinkProtocol()->enableMultiplexing(enable);
@@ -211,4 +208,19 @@ void QGroundControlQmlGlobal::setVirtualTabletJoystick(bool enabled)
         _virtualTabletJoystick = enabled;
         emit virtualTabletJoystickChanged(enabled);
     }
+}
+
+bool QGroundControlQmlGlobal::experimentalSurvey(void) const
+{
+    QSettings settings;
+
+    return settings.value("ExperimentalSurvey", false).toBool();
+}
+
+void QGroundControlQmlGlobal::setExperimentalSurvey(bool experimentalSurvey)
+{
+    QSettings settings;
+
+    settings.setValue("ExperimentalSurvey", experimentalSurvey);
+    emit experimentalSurveyChanged(experimentalSurvey);
 }

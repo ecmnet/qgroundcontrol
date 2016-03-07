@@ -30,9 +30,10 @@
 #include <QMutex>
 #include <QTimer>
 
-#include "QmlObjectListModel.h"
+#include "MissionItem.h"
 #include "QGCMAVLink.h"
 #include "QGCLoggingCategory.h"
+#include "LinkInterface.h"
 
 class Vehicle;
 
@@ -47,25 +48,15 @@ public:
     MissionManager(Vehicle* vehicle);
     ~MissionManager();
     
-    Q_PROPERTY(bool                 inProgress      READ inProgress     NOTIFY inProgressChanged)
-    Q_PROPERTY(QmlObjectListModel*  missionItems    READ missionItems   CONSTANT)
-    
-    // Property accessors
-    
     bool inProgress(void);
-    QmlObjectListModel* missionItems(void) { return &_missionItems; }
-    
-    // C++ methods
+    const QList<MissionItem*>& missionItems(void) { return _missionItems; }
+    int currentItem(void) { return _currentMissionItem; }
     
     void requestMissionItems(void);
     
     /// Writes the specified set of mission items to the vehicle
-    ///     @oaram missionItems Items to send to vehicle
-    void writeMissionItems(const QmlObjectListModel& missionItems);
-    
-    /// Returns a copy of the current set of mission items. Caller is responsible for
-    /// freeing returned object.
-    QmlObjectListModel* copyMissionItems(void);
+    ///     @param missionItems Items to send to vehicle
+    void writeMissionItems(const QList<MissionItem*>& missionItems);
     
     /// Error codes returned in error signal
     typedef enum {
@@ -87,6 +78,7 @@ signals:
     void newMissionItemsAvailable(void);
     void inProgressChanged(bool inProgress);
     void error(int errorCode, const QString& errorMsg);
+    void currentItemChanged(int currentItem);
     
 private slots:
     void _mavlinkMessageReceived(const mavlink_message_t& message);
@@ -107,6 +99,7 @@ private:
     void _handleMissionItem(const mavlink_message_t& message);
     void _handleMissionRequest(const mavlink_message_t& message);
     void _handleMissionAck(const mavlink_message_t& message);
+    void _handleMissionCurrent(const mavlink_message_t& message);
     void _requestNextMissionItem(void);
     void _clearMissionItems(void);
     void _sendError(ErrorCode_t errorCode, const QString& errorMsg);
@@ -116,6 +109,7 @@ private:
 
 private:
     Vehicle*            _vehicle;
+    LinkInterface*      _dedicatedLink;
     
     QTimer*             _ackTimeoutTimer;
     AckType_t           _retryAck;
@@ -128,7 +122,8 @@ private:
     
     QMutex _dataMutex;
     
-    QmlObjectListModel  _missionItems;
+    QList<MissionItem*> _missionItems;
+    int                 _currentMissionItem;
 };
 
 #endif
